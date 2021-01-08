@@ -1,121 +1,93 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import os
-import sys
-import sqlite3
-import csv
 import json
-import argparse
+import base64
+import sqlite3
+import win32crypt
+from Crypto.Cipher import AES
+import shutil
+from datetime import timezone, datetime, timedelta
 
-try:
-    import win32crypt
-except:
-    pass
 
 
+def get_chrome_datetime(chromedate):
+    """Return a `datetime.datetime` object from a chrome format datetime
+    Since `chromedate` is formatted as the number of microseconds since January, 1601"""
+    return datetime(1601, 1, 1) + timedelta(microseconds=chromedate)
 
-def args_parser():
+def get_encryption_key():
+    local_state_path = os.path.join(os.environ["USERPROFILE"],
+                                    "AppData", "Local", "Google", "Chrome",
+                                    "User Data", "Local State")
+    with open(local_state_path, "r", encoding="utf-8") as f:
+        local_state = f.read()
+        local_state = json.loads(local_state)
 
-    parser = argparse.ArgumentParser(
-        description="Retrieve Google Chrome Passwords")
-    parser.add_argument("-o", "--output", choices=['csv', 'json'],
-                        help="Output passwords to [ CSV | JSON ] format.")
-    parser.add_argument(
-        "-d", "--dump", help="Dump passwords to stdout. ", action="store_true")
+    # decode the encryption key from Base64
+    key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])
+    # remove DPAPI str
+    key = key[5:]
+    # return decrypted key that was originally encrypted
+    # using a session key derived from current user's logon credentials
+    # doc: http://timgolden.me.uk/pywin32-docs/win32crypt.html
+    return win32crypt.CryptUnprotectData(key, None, None, None, 0)[1]
 
-    args = parser.parse_args()
-    if args.dump:
-        for data in main():
-            print(data)
-    if args.output == 'csv':
-        output_csv(main())
-        return
-
-    if args.output == 'json':
-        output_json(main())
-        return
-
-    else:
-        parser.print_help()
-
+def decrypt_password(password, key):
+    try:
+        # get the initialization vector
+        iv = password[3:15]
+        password = password[15:]
+        # generate cipher
+        cipher = AES.new(key, AES.MODE_GCM, iv)
+        # decrypt password
+        return cipher.decrypt(password)[:-16].decode()
+    except:
+        try:
+            return str(win32crypt.CryptUnprotectData(password, None, None, None, 0)[1])
+        except:
+            # not supported
+            return ""
 
 def main():
-    info_list = []
-    path = getpath()
-    try:
-        connection = sqlite3.connect(path + "Login Data")
-        with connection:
-            cursor = connection.cursor()
-            v = cursor.execute(
-                'SELECT action_url, username_value, password_value FROM logins')
-            value = v.fetchall()
-
-        if (os.name == "posix") and (sys.platform == "darwin"):
-            print("Mac OSX not supported.")
-            sys.exit(0)
-
-        for origin_url, username, password in value:
-            if os.name == 'nt':
-                password = win32crypt.CryptUnprotectData(
-                    password, None, None, None, 0)[1]
-            
-            if password:
-                info_list.append({
-                    'origin_url': origin_url,
-                    'username': username,
-                    'password': str(password)
-                })
-    except sqlite3.OperationalError as e:
-        e = str(e)
-        if (e == 'database is locked'):
-            print('[!] Make sure Google Chrome is not running in the background')
-        elif (e == 'no such table: logins'):
-            print('[!] Something wrong with the database name')
-        elif (e == 'unable to open database file'):
-            print('[!] Something wrong with the database path')
+    # get the AES key
+    key = get_encryption_key()
+    # local sqlite Chrome database path
+    db_path = os.path.join(os.environ["USERPROFILE"], "AppData", "Local",
+                            "Google", "Chrome", "User Data", "default", "Login Data")
+    # copy the file to another location
+    # as the database will be locked if chrome is currently running
+    filename = "ChromeData.db"
+    shutil.copyfile(db_path, filename)
+    # connect to the database
+    db = sqlite3.connect(filename)
+    cursor = db.cursor()
+    # `logins` table has the data we need
+    cursor.execute("select origin_url, action_url, username_value, password_value, date_created, date_last_used from logins order by date_created")
+    # iterate over all rows
+    for row in cursor.fetchall():
+        origin_url = row[0]
+        action_url = row[1]
+        username = row[2]
+        password = decrypt_password(row[3], key)
+        date_created = row[4]
+        date_last_used = row[5]        
+        if username or password:
+            print(f"Origin URL: {origin_url}")
+            print(f"Action URL: {action_url}")
+            print(f"Username: {username}")
+            print(f"Password: {password}")
         else:
-            print(e)
-        sys.exit(0)
-
-    return info_list
-
-def getpath():
-
-    if os.name == "nt":
-        # This is the Windows Path
-        PathName = os.getenv('localappdata') + \
-            '\\Google\\Chrome\\User Data\\Default\\'
-    elif os.name == "posix":
-        PathName = os.getenv('HOME')
-        if sys.platform == "darwin":
-            # This is the OS X Path
-            PathName += '/Library/Application Support/Google/Chrome/Default/'
-        else:
-            # This is the Linux Path
-            PathName += '/.config/google-chrome/Default/'
-    if not os.path.isdir(PathName):
-        print('[!] Chrome Doesn\'t exists')
-        sys.exit(0)
-
-    return PathName
-    
-def output_csv(info):
+            continue
+        if date_created != 86400000000 and date_created:
+            print(f"Creation date: {str(get_chrome_datetime(date_created))}")
+        if date_last_used != 86400000000 and date_last_used:
+            print(f"Last Used: {str(get_chrome_datetime(date_last_used))}")
+        print("="*50)
+    cursor.close()
+    db.close()
     try:
-        with open('chromepass-passwords.csv', 'wb') as csv_file:
-            csv_file.write('origin_url,username,password \n'.encode('utf-8'))
-            for data in info:
-                csv_file.write(('%s, %s, %s \n' % (data['origin_url'], data[
-                    'username'], data['password'])).encode('utf-8'))
-        print("Data written to chromepass-passwords.csv")
-    except EnvironmentError:
-        print('EnvironmentError: cannot write data')
-        
-def output_json(info):
-	try:
-		with open('chromepass-passwords.json', 'w') as json_file:
-			json.dump({'password_items':info},json_file)
-			print("Data written to chromepass-passwords.json")
-	except EnvironmentError:
-		print('EnvironmentError: cannot write data')
-if __name__ == '__main__':
-    args_parser()
+        # try to remove the copied db file
+        os.remove(filename)
+    except:
+        pass
+if __name__ == "__main__":
+    main()

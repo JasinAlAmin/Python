@@ -1,22 +1,3 @@
-#import smtplib
-#from email.mime.multipart import MIMEMultipart 
-#from email.mime.text import MIMEText
-#msg = MIMEMultipart()
-#msg['From'] = 'jassee1@hotmail.com'
-#msg['To'] = 'jasseanonymus49@gmail.com'
-#msg['Subject'] = 'simple email in python'
-#message = 'hatar människor Send with Python 3'
-#msg.attach(MIMEText(message))
-#mailserver = smtplib.SMTP('SMTP.Office365.com',587)
-# identify ourselves to smtp gmail client
-#mailserver.ehlo()
-# secure our email with tls encryption
-#mailserver.starttls()
-# re-identify ourselves as an encrypted connection
-#mailserver.ehlo()
-#mailserver.login('jassee1@hotmail.com', 'sony1111')
-#mailserver.sendmail('jassee1@hotmail.com','jasseanonymus49@gmail.com',msg.as_string())
-#mailserver.quit()
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -52,4 +33,3 @@ session.login(sender, password)
 text = message.as_string()
 session.sendmail(sender, receiver, text)
 session.quit()
-print('Mail Sent')
