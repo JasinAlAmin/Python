@@ -1,0 +1,33 @@
+import datetime, socket, platform
+
+choice = input("Enter 1 get the local IP address\nEnter 2 Get the system infon.\nEnter 3 for Multiplication.\nEnter 4 for time.\n")
+choice = int(choice)
+
+if choice == 1:
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    print(local_ip)
+elif choice == 2:
+   uname = platform.uname()
+   platform.machine()
+   print(f"Machine: {uname.system}")
+   platform.version()
+   print(f"Machine: {uname.system}")
+   platform.platform()
+   print(f"
+   platform.uname()
+   print(f"
+   platform.system()
+   print(f"
+   platform.processor()
+   print(f"
+   print(f"
+elif choice == 3:
+    
+    print(3)
+    current_time = datetime.datetime.now()  
+    print ("Time now at greenwich meridian is : ", end = "")  
+    print (current_time) 
+
+else:
+    print("Wrong Choice, terminating the program.")
