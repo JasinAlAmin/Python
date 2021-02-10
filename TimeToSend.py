@@ -5,9 +5,9 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 body = '''Hello,This is the body of the emailsicerely yoursG.G.'''
-sender = 'jassee1@hotmail.com'
-password = 'sony1111'
-receiver = 'jasseanonymus49@gmail.com'
+sender = ''
+password = ''
+receiver = ''
 message = MIMEMultipart()
 message['From'] = sender
 message['To'] = receiver
